@@ -120,6 +120,10 @@ The function returns `true` if:
 
 ## Feasibility Spike: Verifying ZKML Inference Proofs on Soroban (#1189)
 
+> **Spike status:** `still-open` · **Last reviewed:** 2026-10-16 · **Index:** [spike-index.md](spike-index.md#index)
+>
+> **Outcome:** concluded with a conditional recommendation — proceed only once pairing (`bn254`/`bls12-381`) host functions are available on the target network, otherwise defer. That precondition is not met by the contract's current `soroban-sdk` 21 / Rust 1.81 pin, so the work is deferred, not abandoned. Tracked in: pending (see [open items](spike-index.md#open-items-awaiting-a-tracking-issue)).
+
 This section is a feasibility spike for extending the range-proof approach above to **zero-knowledge machine-learning (ZKML) inference proofs**: letting the chain verify that a published score was produced by a committed model on committed inputs, rather than trusting the operator. It is a report + cost model, not a shipped verifier.
 
 ### 1. Proof-system survey and Soroban verifier costs

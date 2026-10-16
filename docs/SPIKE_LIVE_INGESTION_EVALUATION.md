@@ -1,5 +1,9 @@
 # Spike Evaluation: Live-RPC / Horizon Streaming Ingestion for Replay & Forensics (#933)
 
+> **Spike status:** `concluded-adopted` · **Last reviewed:** 2026-10-16 · **Index:** [spike-index.md](spike-index.md#index)
+>
+> **Outcome:** the recommended "Snapshot-then-Replay" design was implemented: `scripts/fetch_testnet_snapshot.py` and the `fetch-snapshot` mode documented in [`tools/replay/README.md`](../tools/replay/README.md) export a verified NDJSON snapshot, and `tools/replay` stays offline and deterministic. Issue #933 is closed.
+
 ## Executive Summary
 
 This spike evaluates whether `tools/replay` (and forensic tools in the LedgerLens ecosystem) should gain a mode that directly ingests live or historical streaming transaction/event data from Soroban RPC / Horizon endpoints, and how to maintain **deterministic, reproducible-bundle guarantees** while doing so.

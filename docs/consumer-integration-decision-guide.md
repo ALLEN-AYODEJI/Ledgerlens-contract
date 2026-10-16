@@ -176,6 +176,11 @@ stored score to the gate.  If the score has decayed or was submitted while
 the wallet was embargoed, it may have changed.  Audit the current score before
 lifting an embargo in production.
 
+A [cool-off exemption](privacy-model.md#cool-off-exemptions-1425) never changes
+this: gates still return `false` for an embargoed wallet. An `Embargo`
+exemption only lets its named party read the score through
+`get_score_under_exemption`.
+
 ---
 
 ## 6. ABI, Event, Error, and Storage Compatibility Notes

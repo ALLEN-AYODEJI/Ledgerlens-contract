@@ -74,6 +74,16 @@ pub const CONTRACT_VERSION: u32 = 5;
 /// Hard upper bound on Merkle proof length.
 pub const MAX_MERKLE_PROOF_DEPTH: u32 = 30;
 pub const MAX_WALLET_PAIRS: u32 = 20;
+/// Maximum number of per-pair entries `get_aggregate_breakdown` returns
+/// (#1426). A wallet with more contributing pairs gets the
+/// `MAX_AGGREGATE_BREAKDOWN_PAIRS` highest-contributing ones and
+/// `truncated = true`; see docs/score-math.md § Explaining the aggregate.
+pub const MAX_AGGREGATE_BREAKDOWN_PAIRS: u32 = 10;
+/// Longest lifetime (seconds) a single cool-off exemption grant may have
+/// (#1425). 30 days: long enough to cover a court-ordered access window,
+/// short enough that every exemption is re-justified by a fresh two-person
+/// grant rather than silently persisting. See docs/privacy-model.md.
+pub const MAX_COOL_OFF_EXEMPTION_SECS: u64 = 2_592_000;
 pub const DEFAULT_COOLDOWN_SECS: u64 = 3_600;
 pub const MIN_COOLDOWN_SECS: u64 = 60;
 pub const MAX_COOLDOWN_SECS: u64 = 86_400;

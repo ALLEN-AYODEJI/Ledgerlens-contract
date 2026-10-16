@@ -261,6 +261,10 @@ Examples of rejected inputs:
 
 ## 6. Post-quantum attestation feasibility spike (#1178)
 
+> **Spike status:** `still-open` · **Last reviewed:** 2026-10-16 · **Index:** [spike-index.md](spike-index.md#index)
+>
+> **Outcome:** concluded as **monitor** with explicit revisit triggers (§ 6.4); none has fired yet. Tracked in: pending (see [open items](spike-index.md#open-items-awaiting-a-tracking-issue)).
+
 > **Status:** Spike / non-production. This section records the feasibility
 > investigation requested in issue #1178. Nothing here changes the on-chain
 > ABI, storage layout, events, or error enum; the current secp256k1 path in

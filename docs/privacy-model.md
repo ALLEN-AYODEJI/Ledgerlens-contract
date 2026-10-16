@@ -216,3 +216,64 @@ Operators that want case-specific hashes can call
 Periodic compliance and governance reports aggregate score data under the
 redaction policy and privacy review recorded in
 [compliance-report.md](compliance-report.md#redaction-policy).
+
+## Cool-off exemptions (#1425)
+
+A wallet under active legal process — for example a court order requiring one
+named party to keep unrestricted read access — may need to be exempted from a
+single per-wallet mechanism without the exemption becoming a generic "safe"
+signal. The mechanisms themselves are documented elsewhere and not repeated
+here: the embargo in
+[consumer-integration-decision-guide.md § 5](consumer-integration-decision-guide.md#5-embargo-behavior)
+and the [glossary](glossary.md#embargo), the score floor and submission
+cooldown in [score-query-guide.md](score-query-guide.md) and the contract
+rustdoc for `set_score_floor_policy` / `set_pair_cooldown`.
+
+### Record
+
+`grant_cool_off_exemption(admin_signers, wallet, mechanism, governance_ref, expires_at, disclose_to)`
+stores one `CoolOffExemption` under `DataKeyG::CoolOffExemption(wallet, mechanism)`:
+
+| Field | Meaning |
+|---|---|
+| `mechanism` | Exactly one of `RateLimit` (submission cooldown), `Embargo`, `ScoreFloor`. |
+| `governance_ref` | 32-byte commitment to the authorising governance action and its off-chain legal record. |
+| `approvers` | The (at least two) distinct admin-set members who authorised the grant. |
+| `granted_at`, `expires_at` | Ledger timestamps; the exemption applies while `now < expires_at`. |
+| `disclose_to` | Optional single party allowed to read the record and, for `Embargo`, the scoped score read. |
+
+### Guarantees
+
+- **Only the named mechanism changes.** A `RateLimit` exemption skips the
+  cooldown / token-bucket check (the velocity cap still applies); a
+  `ScoreFloor` exemption skips the floor check; an `Embargo` exemption only
+  enables `get_score_under_exemption` for `disclose_to`. No exemption writes a
+  score or confidence value: a submission it lets through is stored verbatim.
+- **Ordinary consumers see no difference.** `query_risk_gate*`, `get_score`,
+  `get_aggregate_score`, `get_aggregate_breakdown` and `is_embargoed` never
+  consult exemptions. `get_score_under_exemption` returns exactly what
+  `get_score` returns for any caller other than the scoped party, and
+  `get_cool_off_exemption` answers `Unauthorized` to anyone but an admin or
+  the scoped party whether or not a record exists.
+- **Two-person authorisation.** A grant needs at least two distinct admin-set
+  members in the same transaction, independent of the admin threshold;
+  single-admin deployments cannot grant. Revocation
+  (`revoke_cool_off_exemption`) only ever restores normal behaviour and needs
+  ordinary admin authorisation.
+- **Mandatory expiry, no silent renewal.** `expires_at` must be in the future
+  and at most `MAX_COOL_OFF_EXEMPTION_SECS` (30 days) ahead. Granting over an
+  unexpired record fails with `CoolOffExemptionAlreadyActive`; an extension is
+  a new two-person grant after revocation or lapse. A lapsed record is ignored
+  by every check, so behaviour returns to normal at `expires_at` with no
+  transaction.
+
+### What is on-chain, and what is not
+
+The legal context (court, order, case reference, counsel) stays off-chain and
+is bound only by `governance_ref`. Existence is auditable through the
+`coe_grant` (`wallet, mechanism, governance_ref, expires_at`) and `coe_rvk`
+(`wallet, mechanism, admin`) events; neither publishes `disclose_to`. The
+stored record holds the disclosure party's address because the contract must
+check it, which is the minimum needed to enforce the scope.
+
+Tests: `contracts/ledgerlens-score/src/test_cool_off_exemption.rs`.

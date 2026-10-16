@@ -190,4 +190,15 @@ impl Error {
     /// Returned by `set_fee_exemption` when `expires_at` is not in the
     /// future relative to the current ledger timestamp.
     pub const InvalidExemptionExpiry: Error = Error::InvalidTimestamp;
+
+    // ── Cool-off exemptions (#1425) ──────────────────────────────────────────
+    /// Returned by `grant_cool_off_exemption` when `expires_at` is not in the
+    /// future or lies more than `MAX_COOL_OFF_EXEMPTION_SECS` ahead.
+    pub const InvalidCoolOffExemptionExpiry: Error = Error::InvalidTimestamp;
+    /// Returned by `grant_cool_off_exemption` when an unexpired exemption
+    /// already exists for the same `(wallet, mechanism)`: there is no silent
+    /// renewal, an extension is a fresh grant after revoke or lapse.
+    pub const CoolOffExemptionAlreadyActive: Error = Error::AlreadyInitialized;
+    /// Returned by `revoke_cool_off_exemption` when no record exists.
+    pub const CoolOffExemptionNotFound: Error = Error::ScoreNotFound;
 }

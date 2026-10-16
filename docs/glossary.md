@@ -124,6 +124,13 @@ every read/gate function treat it as "no signal available" — `query_risk_gate`
 Used to block a wallet under active investigation without deleting its history. Bounded by
 `MAX_EMBARGOED_WALLETS`.
 
+### Cool-off exemption
+
+A governed, two-person-authorised, mandatorily-expiring exemption of one wallet from exactly one
+per-wallet mechanism (submission cooldown, embargo, or score floor) for a wallet under active legal
+process (`grant_cool_off_exemption`). Never changes a score and is invisible to ordinary gate
+consumers. See [privacy-model.md § Cool-off exemptions](privacy-model.md#cool-off-exemptions-1425).
+
 ### Fail-closed
 
 The rule that every gate function resolves *uncertain* conditions (no score, embargoed wallet,

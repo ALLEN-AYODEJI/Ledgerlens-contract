@@ -1100,3 +1100,29 @@ pub fn gate_query_metered(env: &Env, consumer: &Address, fee_charged: i128) {
     env.events()
         .publish((symbol_short!("gq_meter"), EVENT_VERSION), (consumer.clone(), fee_charged));
 }
+
+// ── Cool-off exemptions (#1425) ───────────────────────────────────────────────
+//
+// Existence-only audit trail: wallet, mechanism, the 32-byte governance
+// commitment and the expiry. The legal context the commitment binds stays
+// off-chain, and the `disclose_to` party is deliberately not published.
+
+pub fn cool_off_exemption_granted(
+    env: &Env,
+    wallet: &Address,
+    mechanism: u32,
+    governance_ref: &BytesN<32>,
+    expires_at: u64,
+) {
+    env.events().publish(
+        (symbol_short!("coe_grant"), EVENT_VERSION),
+        (wallet.clone(), mechanism, governance_ref.clone(), expires_at),
+    );
+}
+
+pub fn cool_off_exemption_revoked(env: &Env, wallet: &Address, mechanism: u32, admin: &Address) {
+    env.events().publish(
+        (symbol_short!("coe_rvk"), EVENT_VERSION),
+        (wallet.clone(), mechanism, admin.clone()),
+    );
+}

@@ -2,6 +2,12 @@
 
 Automated updates are configured in [`renovate.json`](../renovate.json) (issue #1227).
 
+**Scope.** This policy covers every dependency that can change what users run
+or read: the Cargo workspace (and so the WASM) **and** the documentation site's
+toolchain (mdBook, rustdoc, the theme and the `docs.yml` actions). The site's
+threat model and its extra controls are in
+[security/docs-site-supply-chain.md](security/docs-site-supply-chain.md).
+
 ## Grouping, pinning and scheduling
 
 | Group | Packages | Schedule | Approval |
@@ -41,6 +47,7 @@ A failing candidate build is reported in the comment and does not block the PR.
 - [ ] [`cargo-deny`](../deny.toml) passes (the `dependency-license` / `audit` jobs in `ci.yml`).
 - [ ] `cargo-vet` / the `supply-chain` job in `ci.yml` passes, or new audits/exemptions are added in this PR.
 - [ ] The WASM size gate (`scripts/check-wasm-size.sh`) passes.
+- [ ] For docs-site toolchain bumps (mdBook, `docs.yml` actions): `python3 tools/docs-site/supply_chain.py check-pins` and the `toolchain-audit` job in `docs.yml` pass.
 - [ ] For SDK majors: [`docs/soroban-sdk-migration.md`](soroban-sdk-migration.md) is updated with the impact analysis.
 - [ ] [`docs/host-version-support-policy.md`](host-version-support-policy.md) and `rust-toolchain.toml` still agree.
 - [ ] Storage layout, events and error enum are unchanged, or the change follows the compatibility policies.

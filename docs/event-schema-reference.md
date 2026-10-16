@@ -264,3 +264,18 @@ Golden fixtures for every event topic live under `tools/schema-gen/fixtures/`, a
 - **Topic**: `("svc_res",)`
 - **Data**: `ServiceResumedEvent { last_active_at, gap_secs }`
 - **Use Case**: Track service recovery and gap duration
+
+### 9. Cool-off Exemption Events (#1425)
+
+Existence-only audit trail; the legal context and the `disclose_to` party are
+not published. See [privacy-model.md § Cool-off exemptions](privacy-model.md#cool-off-exemptions-1425).
+
+#### `coe_grant`
+- **Topic**: `("coe_grant", EVENT_VERSION)`
+- **Data**: `(wallet: Address, mechanism: u32, governance_ref: BytesN<32>, expires_at: u64)` — `mechanism`: `1` rate limit, `2` embargo, `3` score floor
+- **Use Case**: Audit every two-person exemption grant
+
+#### `coe_rvk`
+- **Topic**: `("coe_rvk", EVENT_VERSION)`
+- **Data**: `(wallet: Address, mechanism: u32, admin: Address)`
+- **Use Case**: Audit early revocation (lapse at `expires_at` emits nothing)

@@ -1,5 +1,9 @@
 # OSS-Fuzz onboarding evaluation
 
+> **Spike status:** `still-open` · **Last reviewed:** 2026-10-16 · **Index:** [spike-index.md](spike-index.md#index)
+>
+> **Outcome:** the harnesses under `fuzz/` were adopted. The recommended ClusterFuzzLite step is **superseded by** the nightly fuzz & soak job ([nightly-fuzzing.md](nightly-fuzzing.md), `.github/workflows/nightly-fuzz.yml`, #1226), which gives the same private, scheduled coverage; `.clusterfuzzlite/` was never created. The OSS-Fuzz application itself remains deferred until the contract has mainnet integrators. Tracked in: pending (see [open items](spike-index.md#open-items-awaiting-a-tracking-issue)).
+
 Spike for issue #1232. Harnesses live in [`fuzz/`](../fuzz) and are committed regardless of
 whether the OSS-Fuzz application goes ahead.
 

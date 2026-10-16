@@ -88,6 +88,10 @@ reporter.
   storage layout, events, and error enum.
 - **Tools:** build, deployment, and verification tooling maintained here.
 - **Scripts:** migration, seeding, and operational scripts.
+- **Documentation site:** the published docs site and its build/publish pipeline
+  (`.github/workflows/docs.yml`, `tools/docs-site/`) — e.g. served content that differs from
+  the sealed build, or a build step able to alter it. Threat model:
+  [`docs/security/docs-site-supply-chain.md`](docs/security/docs-site-supply-chain.md).
 - **Deployed addresses:** the canonical mainnet/testnet deployments listed in
   `docs/security/deployed-addresses.md` (publish before mainnet).
 

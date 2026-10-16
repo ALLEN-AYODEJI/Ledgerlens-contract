@@ -25,6 +25,10 @@ pub fn check_invariants_for_fuzz(env: &soroban_sdk::Env) {
     invariants::invariant_check(env);
 }
 
+/// Governed per-wallet cool-off exemptions (#1425), a third
+/// `#[contractimpl]` block kept in its own file for the same reason as
+/// `rent_relay_credits`. See `docs/privacy-model.md` § Cool-off exemptions.
+mod cool_off_exemptions;
 /// Pure fee-tier computation for the tiered gate fee schedule; see
 /// `rent_relay_credits.rs` for where it's wired into `query_risk_gate_metered`.
 mod fee_schedule;
@@ -60,6 +64,12 @@ mod test_parameter_governance;
 
 #[cfg(test)]
 mod test_two_person_control;
+
+#[cfg(test)]
+mod test_aggregate_breakdown;
+
+#[cfg(test)]
+mod test_cool_off_exemption;
 
 #[cfg(test)]
 mod test_batch_ttl_optimization;
@@ -283,20 +293,21 @@ pub use event_causality::{EventCausality, WorkflowTracker};
 pub use event_stability::{EventStability, EventStabilityRegistry};
 pub use events::{ServiceResumedEvent, ServiceSilenceAlertEvent};
 pub use types::{
-    AdaptiveRateLimit, AdaptiveThresholdConfig, AggregateRiskScore, AlertAckRecord, AlertType,
-    AuditorScoreExport, BatchAttestation, BatchEntryResult, BatchResult, BatchScoreResult,
-    ConfigExportBundle, ConfigExportEntry, DecayCurve, DeletionApprovalPolicy,
-    DeletionAuditWarning, DeletionPreflight, EffectiveRiskScore, EmbargoExpiry, FeeTier,
-    FlashProtectionMode, HllSketch, InterfaceMetadata, InterpolationMethod, MaybeRiskScore,
-    MaybeScoreAttestation, MaybeThresholdAttestation, ModelSubmission, ModelVersionStats,
-    ModelVersionStatus, NormalizedSubmission, OperatorScoreExport, ParamChangeProposal, ParamValue,
-    ParameterProposal, ParameterProposalRecord, ParameterProposalStatus, PendingConfigExportEntry,
-    PendingScoreEntry, Policy, PolicyApproval, PolicyBundle, PolicyBundleProposal,
-    PublicScoreExport, RelayScoreAttestation, RiskScore, ScoreAttestation, ScoreAttestationInput,
-    ScoreDispute, ScoreFloorPolicy, ScoreHistogram, ScoreQuery, ScoreSubmission,
-    ScoreSubmissionWithProof, ScoreTrend, ScoreVelocityCap, SignerAccuracyRecord, SignerState,
-    SignerStateRecord, SubmissionProvenance, ThresholdAttestation, TierBounds, TokenBucket,
-    UpgradeProposal, WelfordCorrState,
+    AdaptiveRateLimit, AdaptiveThresholdConfig, AggregateBreakdown, AggregateContribution,
+    AggregateRiskScore, AlertAckRecord, AlertType, AuditorScoreExport, BatchAttestation,
+    BatchEntryResult, BatchResult, BatchScoreResult, ConfigExportBundle, ConfigExportEntry,
+    CoolOffExemption, DecayCurve, DeletionApprovalPolicy, DeletionAuditWarning, DeletionPreflight,
+    EffectiveRiskScore, EmbargoExpiry, ExemptMechanism, FeeTier, FlashProtectionMode, HllSketch,
+    InterfaceMetadata, InterpolationMethod, MaybeRiskScore, MaybeScoreAttestation,
+    MaybeThresholdAttestation, ModelSubmission, ModelVersionStats, ModelVersionStatus,
+    NormalizedSubmission, OperatorScoreExport, ParamChangeProposal, ParamValue, ParameterProposal,
+    ParameterProposalRecord, ParameterProposalStatus, PendingConfigExportEntry, PendingScoreEntry,
+    Policy, PolicyApproval, PolicyBundle, PolicyBundleProposal, PublicScoreExport,
+    RelayScoreAttestation, RiskScore, ScoreAttestation, ScoreAttestationInput, ScoreDispute,
+    ScoreFloorPolicy, ScoreHistogram, ScoreQuery, ScoreSubmission, ScoreSubmissionWithProof,
+    ScoreTrend, ScoreVelocityCap, SignerAccuracyRecord, SignerState, SignerStateRecord,
+    SubmissionProvenance, ThresholdAttestation, TierBounds, TokenBucket, UpgradeProposal,
+    WelfordCorrState,
 };
 /// The 32-byte all-zeros field element used as the value in non-membership proofs.
 pub use verkle::NON_MEMBER_SENTINEL;
@@ -731,7 +742,10 @@ impl LedgerLensScoreContract {
             let base_cooldown = storage::get_pair_cooldown_secs(env, asset_pair);
             let cooldown = Self::compute_effective_cooldown(env, asset_pair, base_cooldown);
             let now2 = env.ledger().timestamp();
-            if last_submit != 0 && now2 < last_submit.saturating_add(cooldown) {
+            if last_submit != 0
+                && now2 < last_submit.saturating_add(cooldown)
+                && !Self::cool_off_exempt(env, wallet, ExemptMechanism::RateLimit)
+            {
                 return Err(Error::RateLimitExceeded);
             }
             storage::set_last_submit_time(env, wallet, asset_pair, now2);
@@ -1736,7 +1750,10 @@ impl LedgerLensScoreContract {
                     let base_cooldown = storage::get_pair_cooldown_secs(&env, &ns.asset_pair);
                     let cooldown =
                         Self::compute_effective_cooldown(&env, &ns.asset_pair, base_cooldown);
-                    if last_submit != 0 && now < last_submit.saturating_add(cooldown) {
+                    if last_submit != 0
+                        && now < last_submit.saturating_add(cooldown)
+                        && !Self::cool_off_exempt(&env, &ns.wallet, ExemptMechanism::RateLimit)
+                    {
                         rejection_code = Error::RateLimitExceeded as u32;
                     } else if Self::score_floor_blocks(&env, &ns.wallet, &ns.asset_pair, ns.score) {
                         // code 43 = BelowScoreFloor (distinct from InvalidScore=4 for score > 100)
@@ -2168,7 +2185,10 @@ impl LedgerLensScoreContract {
                 let base_cooldown = storage::get_pair_cooldown_secs(&env, &sub.asset_pair);
                 let cooldown =
                     Self::compute_effective_cooldown(&env, &sub.asset_pair, base_cooldown);
-                if last_submit != 0 && now < last_submit.saturating_add(cooldown) {
+                if last_submit != 0
+                    && now < last_submit.saturating_add(cooldown)
+                    && !Self::cool_off_exempt(&env, &sub.wallet, ExemptMechanism::RateLimit)
+                {
                     rejection_code = Error::RateLimitExceeded as u32;
                 } else {
                     let previous_score =
@@ -4126,6 +4146,46 @@ impl LedgerLensScoreContract {
             }
         }
         Self::compute_aggregate_score(&env, &wallet)
+    }
+
+    /// Explains `wallet`'s cross-asset aggregate score (#1426): the asset
+    /// pairs that produced it, each with its effective weight and its
+    /// contribution `weight × score` to the weighted sum.
+    ///
+    /// Computed by the same code path as [`get_aggregate_score`](Self::get_aggregate_score),
+    /// so `breakdown.aggregate_score` always equals
+    /// `get_aggregate_score(wallet).aggregate_score`, and
+    /// `weighted_sum / weight_sum` (integer division) reproduces it. When
+    /// `truncated` is `false`, summing the returned `contribution`s and
+    /// `weight`s gives exactly those two totals.
+    ///
+    /// At most [`constants::MAX_AGGREGATE_BREAKDOWN_PAIRS`] entries are
+    /// returned, highest contribution first (ties keep the wallet's pair
+    /// order); `truncated` is `true` when the wallet has more contributing
+    /// pairs than that, and the omitted pairs are always the smallest
+    /// contributors. Zero-weight pairs appear with `weight = 0` and
+    /// `contribution = 0`.
+    ///
+    /// A pure read: unlike `get_aggregate_score` it does not extend any
+    /// entry's TTL, and it adds nothing to the submission path.
+    /// Embargo and custodian-delegation handling match `get_aggregate_score`.
+    ///
+    /// # Errors
+    /// Same as [`get_aggregate_score`](Self::get_aggregate_score):
+    /// [`Error::ScoreEmbargoed`], [`Error::ScoreNotFound`],
+    /// [`Error::ArithmeticOverflow`].
+    ///
+    /// See [docs/score-math.md](../../docs/score-math.md) § Explaining the aggregate.
+    pub fn get_aggregate_breakdown(env: Env, wallet: Address) -> Result<AggregateBreakdown, Error> {
+        if storage::peek_is_embargoed(&env, &wallet) {
+            return Err(Error::ScoreEmbargoed);
+        }
+        if storage::peek_wallet_pairs(&env, &wallet).is_empty() {
+            if let Some(custodian) = storage::get_score_delegate(&env, &wallet) {
+                return Self::compute_aggregate_breakdown(&env, &custodian);
+            }
+        }
+        Self::compute_aggregate_breakdown(&env, &wallet)
     }
 
     // ── Issue #291: differential-privacy aggregate ────────────────────────────
@@ -11500,7 +11560,33 @@ impl LedgerLensScoreContract {
     /// configured, each per-pair score's effective weight is multiplied by
     /// a time-decay factor derived from the score's age.
     fn compute_aggregate_score(env: &Env, wallet: &Address) -> Result<AggregateRiskScore, Error> {
-        let pairs = storage::get_wallet_pairs(env, wallet);
+        Self::aggregate_core(env, wallet, None).map(|(aggregate, _, _)| aggregate)
+    }
+
+    /// The one implementation of the cross-asset aggregate (#1426).
+    ///
+    /// `get_aggregate_score` (via [`Self::compute_aggregate_score`], with
+    /// `breakdown = None`) and `get_aggregate_breakdown` (with
+    /// `breakdown = Some(..)`) both run exactly this loop, so the aggregate
+    /// and its explanation cannot disagree. Returns the aggregate together
+    /// with the raw `(weighted_sum, weight_sum)` totals it was divided from.
+    ///
+    /// With `breakdown = None` the live-read path is used unchanged (TTL
+    /// extension on read, no per-pair collection), so the submission path's
+    /// aggregate-cache refresh pays nothing for the breakdown feature. With
+    /// `breakdown = Some(..)` every read is a TTL-neutral peek and each pair's
+    /// `(score, effective weight, weight × score)` is pushed in pair order.
+    fn aggregate_core(
+        env: &Env,
+        wallet: &Address,
+        mut breakdown: Option<&mut Vec<AggregateContribution>>,
+    ) -> Result<(AggregateRiskScore, u64, u64), Error> {
+        let peek = breakdown.is_some();
+        let pairs = if peek {
+            storage::peek_wallet_pairs(env, wallet)
+        } else {
+            storage::get_wallet_pairs(env, wallet)
+        };
         if pairs.is_empty() {
             return Err(Error::ScoreNotFound);
         }
@@ -11523,7 +11609,12 @@ impl LedgerLensScoreContract {
 
         for i in 0..pairs.len() {
             let pair = pairs.get(i).unwrap();
-            let component = storage::get_score(env, wallet, &pair).ok_or(Error::ScoreNotFound)?;
+            let component = if peek {
+                storage::peek_score(env, wallet, &pair)
+            } else {
+                storage::get_score(env, wallet, &pair)
+            }
+            .ok_or(Error::ScoreNotFound)?;
 
             if i == 0 || component.score > max_pair_score {
                 max_pair_score = component.score;
@@ -11543,7 +11634,11 @@ impl LedgerLensScoreContract {
             let age_secs = ledger_ts.saturating_sub(component.timestamp);
             let decay_factor = Self::decay_fixed(age_secs, decay_lambda_num, decay_lambda_den);
 
-            let weight = storage::get_pair_weight(env, &pair);
+            let weight = if peek {
+                storage::peek_pair_weight(env, &pair)
+            } else {
+                storage::get_pair_weight(env, &pair)
+            };
 
             // Apply decay to the weight: effective_weight = weight * decay_factor / SCALE
             let decayed_weight = (weight as u64)
@@ -11558,6 +11653,14 @@ impl LedgerLensScoreContract {
             weighted_sum =
                 weighted_sum.checked_add(product as u64).ok_or(Error::ArithmeticOverflow)?;
             weight_sum = weight_sum.checked_add(decayed_weight).ok_or(Error::ArithmeticOverflow)?;
+            if let Some(out) = breakdown.as_deref_mut() {
+                out.push_back(AggregateContribution {
+                    asset_pair: pair.clone(),
+                    score: component.score,
+                    weight: decayed_weight,
+                    contribution: product as u64,
+                });
+            }
         }
 
         // All contributing pairs have weight 0 — the average is undefined.
@@ -11569,7 +11672,7 @@ impl LedgerLensScoreContract {
         // can never itself exceed 100, so the downcast to u32 is safe.
         let aggregate_score = (weighted_sum / weight_sum) as u32;
 
-        Ok(AggregateRiskScore {
+        let aggregate = AggregateRiskScore {
             aggregate_score,
             pair_count: pairs.len(),
             max_pair_score,
@@ -11578,6 +11681,45 @@ impl LedgerLensScoreContract {
             ml_flag_count,
             last_updated,
             decay_lambda_applied,
+        };
+        Ok((aggregate, weighted_sum, weight_sum))
+    }
+
+    /// Builds the bounded breakdown for `wallet` from [`Self::aggregate_core`]:
+    /// keeps the `MAX_AGGREGATE_BREAKDOWN_PAIRS` largest contributions,
+    /// largest first, ties resolved by the wallet's pair order (#1426).
+    fn compute_aggregate_breakdown(
+        env: &Env,
+        wallet: &Address,
+    ) -> Result<AggregateBreakdown, Error> {
+        let mut all: Vec<AggregateContribution> = Vec::new(env);
+        let (aggregate, weighted_sum, weight_sum) =
+            Self::aggregate_core(env, wallet, Some(&mut all))?;
+        let cap = constants::MAX_AGGREGATE_BREAKDOWN_PAIRS;
+        let truncated = all.len() > cap;
+        let mut contributions: Vec<AggregateContribution> = Vec::new(env);
+        // Selection by repeated max: O(cap × N), bounded because the result
+        // is capped and N is designed around MAX_WALLET_PAIRS.
+        while contributions.len() < cap && !all.is_empty() {
+            let mut best: u32 = 0;
+            let mut best_value = all.get(0).unwrap().contribution;
+            for i in 1..all.len() {
+                let value = all.get(i).unwrap().contribution;
+                if value > best_value {
+                    best = i;
+                    best_value = value;
+                }
+            }
+            contributions.push_back(all.get(best).unwrap());
+            all.remove(best);
+        }
+        Ok(AggregateBreakdown {
+            aggregate_score: aggregate.aggregate_score,
+            pair_count: aggregate.pair_count,
+            weighted_sum,
+            weight_sum,
+            truncated,
+            contributions,
         })
     }
 
@@ -11804,6 +11946,11 @@ impl LedgerLensScoreContract {
         if !policy.enabled {
             return false;
         }
+        // #1425: a governed, unexpired ScoreFloor exemption lifts this check
+        // (and only this check) for the wallet.
+        if Self::cool_off_exempt(env, wallet, ExemptMechanism::ScoreFloor) {
+            return false;
+        }
         let historical_max = storage::get_historical_max_score(env, wallet, asset_pair);
         historical_max >= policy.high_water_mark && new_score < policy.floor_value
     }
@@ -11977,7 +12124,11 @@ impl LedgerLensScoreContract {
         // Always read last_submit for use in the velocity-cap check below.
         let last_submit = storage::get_last_submit_time(env, wallet, asset_pair);
 
-        if capacity > 1 {
+        if Self::cool_off_exempt(env, wallet, ExemptMechanism::RateLimit) {
+            // #1425: governed RateLimit exemption — skip the cooldown /
+            // token-bucket check only. The velocity cap and score floor
+            // below still apply.
+        } else if capacity > 1 {
             // Token-bucket rate limiting (issue #269).
             let bucket = storage::get_token_bucket(env, wallet, asset_pair);
             let (current_tokens, last_refill) = match bucket {

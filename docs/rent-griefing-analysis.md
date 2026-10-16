@@ -1,5 +1,9 @@
 # Rent Griefing via High-Cardinality Monitored Wallets
 
+> **Spike status:** `concluded-adopted` · **Last reviewed:** 2026-10-16 · **Index:** [spike-index.md](spike-index.md#index)
+>
+> **Outcome:** the existing bound was judged sufficient and regression coverage was added; the later keeper TTL-reward section of this document was implemented in `rent_relay_credits.rs`.
+
 **Date:** 2026-07-26 · **Status:** Analysis complete — existing bound sufficient, no code change required beyond regression coverage
 
 ## Threat model

@@ -130,6 +130,7 @@ cargo +nightly bench --features bench 2>&1 | grep -E "submit_score|get_score"
 - [ ] `CHANGELOG.md` updated with changes and migration guide
 - [ ] Release notes written for operators and integrators
 - [ ] Deployment script (`deploy.sh`) updated if needed
+- [ ] Spike statuses reviewed ([release-process.md § Spike status review](release-process.md#spike-status-review))
 
 **Version Numbering**:
 - Semver format: `MAJOR.MINOR.PATCH`

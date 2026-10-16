@@ -250,6 +250,22 @@ The workflow requests minimal permissions:
 
 ---
 
+## Spike status review
+
+Before tagging a release, the release owner:
+
+- [ ] Re-checks every `still-open` row in [spike-index.md](spike-index.md)
+      against its tracking issue and against any ADR or implementation merged
+      since the previous release, and updates statuses that changed (for
+      example to `concluded-adopted` or `superseded`, with the link).
+- [ ] Adds a marker and an index row for any spike, evaluation, or exploratory
+      report merged since the previous release that lacks one.
+- [ ] Bumps **Last reviewed** on every marker that was re-checked.
+
+`python3 tools/check_spike_index.py` must pass afterwards; the docs workflow
+runs it on every PR, so the index cannot silently drift out of sync with the
+markers between releases.
+
 ## Related Documents
 
 - `docs/reproducible-builds.md` — Local verification procedure and troubleshooting

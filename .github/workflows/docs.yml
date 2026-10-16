@@ -6,6 +6,18 @@ name: Docs site
 #   /<tag>/           one snapshot per release tag (v*)
 #   /pr-preview/pr-N/ pull request previews (same-repo PRs only)
 #   /versions.json    list read by the version selector
+#
+# Issue #1423: the site's own supply chain is held to the contract's
+# standard (docs/security/docs-site-supply-chain.md):
+#   - every action is pinned to a full commit SHA (Renovate bumps the digests);
+#   - `build` and `toolchain-audit` run third-party code with a read-only
+#     token; only `deploy` / `preview-comment` get write scopes, and they run
+#     no third-party build tooling;
+#   - `toolchain-audit` runs cargo-audit against the pinned mdBook's own
+#     Cargo.lock, fetched from crates.io and checksum-verified;
+#   - the built site is sealed with integrity.json (SHA-256 per file + a root
+#     digest published in the run summary), re-verified before and after it
+#     is copied into gh-pages.
 
 on:
   push:
@@ -16,14 +28,14 @@ on:
       - "docs/**"
       - "*.md"
       - "tools/docs-site/**"
+      - "tools/check_spike_index.py"
       - "contracts/ledgerlens-score/src/**"
       - ".github/workflows/docs.yml"
   schedule:
-    - cron: "0 5 * * 1" # weekly external link sweep
+    - cron: "0 5 * * 1" # weekly external link sweep + docs toolchain advisory scan
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 concurrency:
   group: docs-${{ github.ref }}
@@ -33,39 +45,59 @@ jobs:
   build:
     name: Build and check docs
     runs-on: ubuntu-latest
+    outputs:
+      label: ${{ steps.ver.outputs.label }}
+      dir: ${{ steps.ver.outputs.dir }}
+      digest: ${{ steps.seal.outputs.digest }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Docs toolchain pins (actions by SHA, mdBook version, stdlib-only tooling, no external theme assets)
+        run: |
+          python3 tools/docs-site/supply_chain.py --self-test
+          python3 tools/docs-site/supply_chain.py check-pins
 
       - name: Broken internal links fail CI
         run: python3 tools/docs-site/check_links.py
 
+      - name: Spike index matches per-document status markers (#1424)
+        run: |
+          python3 tools/check_spike_index.py --self-test
+          python3 tools/check_spike_index.py
+
       - name: Spelling and terminology (glossary terms in _typos.toml)
-        uses: crate-ci/typos@v1.24.6
+        uses: crate-ci/typos@8e6a4285bcbde632c5d79900a7779746e8b7ea3f  # v1.24.6
         continue-on-error: true
         with:
           files: docs README.md CONTRIBUTING.md
 
       - name: Restore external link cache
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
         with:
           path: .lycheecache
           key: lychee-${{ github.sha }}
           restore-keys: lychee-
 
       - name: External links (cached, allowlisted via .lycheeignore)
-        uses: lycheeverse/lychee-action@v2
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8  # v2.9.0
         with:
           args: >-
             --cache --max-cache-age 3d --no-progress --offline=false
             --exclude-path target 'docs/**/*.md' README.md CONTRIBUTING.md
           fail: ${{ github.event_name == 'schedule' }}
 
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - name: Install mdBook
-        uses: taiki-e/install-action@v2
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772  # master (2026-08-05)
         with:
-          tool: mdbook@0.4.40
+          toolchain: "1.81.0"
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6  # v2.9.2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Install mdBook
+        uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0  # v2.87.22
+        with:
+          tool: mdbook@0.5.4
 
       - name: Resolve site version
         id: ver
@@ -83,34 +115,93 @@ jobs:
           cargo doc -p ledgerlens-score --no-deps
           cp -r target/doc/. target/docs-site/book/api/
 
-      - uses: actions/upload-artifact@v4
+      - name: Seal site (SRI check + integrity.json)
+        id: seal
+        run: |
+          digest=$(python3 tools/docs-site/supply_chain.py seal target/docs-site/book)
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Docs site integrity (${{ steps.ver.outputs.label }})"
+            echo
+            echo "Root digest: \`$digest\`"
+            echo
+            echo "Verify a served or mirrored copy with:"
+            echo "\`python3 tools/docs-site/supply_chain.py verify <dir> --digest $digest\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08  # v4.6.1
         with:
           name: docs-site
           path: target/docs-site/book
 
+  toolchain-audit:
+    name: Docs toolchain advisory scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772  # master (2026-08-05)
+        with:
+          # Same pin as ci.yml's `audit` job: cargo-audit 0.22 needs Rust 1.88+.
+          toolchain: "1.88.0"
+      - name: Install cargo-audit
+        run: cargo +1.88.0 install cargo-audit --version 0.22.2 --locked
+      - name: Fetch and checksum-verify the pinned mdBook's Cargo.lock
+        run: python3 tools/docs-site/supply_chain.py fetch-mdbook-lock target/docs-toolchain
+      - name: RustSec advisories for mdBook's dependency graph
+        # Exceptions live in supply_chain.py (MDBOOK_AUDIT_IGNORES) with an
+        # owner and expiry; an expired one fails this step.
+        run: |
+          ignores=$(python3 tools/docs-site/supply_chain.py audit-ignores)
+          cargo +1.88.0 audit --file target/docs-toolchain/Cargo.lock $ignores
+
+  deploy:
+    name: Publish to gh-pages
+    needs: [build, toolchain-audit]
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
+        with:
+          name: docs-site
+          path: site
+      - name: Verify artifact against the digest sealed in the build job
+        run: python3 tools/docs-site/supply_chain.py verify site --digest "${{ needs.build.outputs.digest }}"
       - name: Deploy to gh-pages
-        if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
         env:
-          DIR: ${{ steps.ver.outputs.dir }}
-          LABEL: ${{ steps.ver.outputs.label }}
+          DIR: ${{ needs.build.outputs.dir }}
+          LABEL: ${{ needs.build.outputs.label }}
+          DIGEST: ${{ needs.build.outputs.digest }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git fetch origin gh-pages && git worktree add pages origin/gh-pages \
             || { git worktree add --detach pages && git -C pages checkout --orphan gh-pages && git -C pages rm -rfq .; }
-          rm -rf "pages/$DIR" && mkdir -p "pages/$DIR" && cp -r target/docs-site/book/. "pages/$DIR/"
+          rm -rf "pages/$DIR" && mkdir -p "pages/$DIR" && cp -r site/. "pages/$DIR/"
+          python3 tools/docs-site/supply_chain.py verify "pages/$DIR" --digest "$DIGEST"
           # versions.json: latest first, then release tags newest first.
           (cd pages && { echo latest; ls -d v*/ 2>/dev/null | tr -d / | sort -rV; } \
             | python3 -c 'import json,sys; print(json.dumps([l.strip() for l in sys.stdin if l.strip()]))' > versions.json)
           touch pages/.nojekyll
           git -C pages add -A
-          git -C pages commit -qm "docs: deploy $LABEL from ${GITHUB_SHA::7}" || exit 0
+          git -C pages commit -qm "docs: deploy $LABEL from ${GITHUB_SHA::7} (integrity root $DIGEST)" || exit 0
           git -C pages push origin HEAD:gh-pages
 
-      - name: Post preview link
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-        uses: marocchino/sticky-pull-request-comment@v2
+  preview-comment:
+    name: Post preview link
+    needs: [build, deploy]
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: marocchino/sticky-pull-request-comment@773744901bac0e8cbb5a0dc842800d45e9b2b405  # v2.9.4
         with:
           header: docs-preview
           message: |
-            Docs preview: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/${{ steps.ver.outputs.dir }}/
+            Docs preview: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/${{ needs.build.outputs.dir }}/
+            Integrity root digest: `${{ needs.build.outputs.digest }}` (see `integrity.json` in the preview)

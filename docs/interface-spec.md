@@ -262,6 +262,7 @@ for the temporary gate-read marker that "durable" deliberately excludes.
 | `get_score_opt(env, wallet, asset_pair) -> Option<RiskScore>` | latest score | `None` if absent; cannot distinguish *why* |
 | `get_score_history(env, wallet, asset_pair) -> Vec<RiskScore>` | up to 10 entries, oldest first | empty `Vec` if none |
 | `get_aggregate_score(env, wallet) -> Result<AggregateRiskScore, Error>` | cross-asset weighted view | `Err(ScoreNotFound)` if the wallet has no scores |
+| `get_aggregate_breakdown(env, wallet) -> Result<AggregateBreakdown, Error>` | per-pair weights and contributions behind the aggregate | same errors as `get_aggregate_score`; at most `MAX_AGGREGATE_BREAKDOWN_PAIRS` entries; see [score-math.md](score-math.md#explaining-the-aggregate-get_aggregate_breakdown-1426) |
 | `get_version(env) -> u32` | contract build version | currently `5` (reflecting the current contract build); `get_contract_version` is an alias |
 | `get_interface_metadata(env) -> InterfaceMetadata` | versioned discovery | see §1.4 |
 

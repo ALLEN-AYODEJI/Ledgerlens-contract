@@ -252,6 +252,11 @@ kind = "unit"
 tier = "fast"
 
 [[unit]]
+id = "contracts/ledgerlens-score/src/test_aggregate_breakdown.rs"
+kind = "property"
+tier = "standard"
+
+[[unit]]
 id = "contracts/ledgerlens-score/src/test_aggregate_invariants.rs"
 kind = "property"
 tier = "disabled"
@@ -397,6 +402,11 @@ id = "contracts/ledgerlens-score/src/test_consensus_config.rs"
 kind = "integration"
 tier = "disabled"
 reason = "not wired: no mod declaration in src/lib.rs"
+
+[[unit]]
+id = "contracts/ledgerlens-score/src/test_cool_off_exemption.rs"
+kind = "unit"
+tier = "fast"
 
 [[unit]]
 id = "contracts/ledgerlens-score/src/test_cooldown.rs"

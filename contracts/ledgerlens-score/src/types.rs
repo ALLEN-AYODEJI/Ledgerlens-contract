@@ -1390,3 +1390,78 @@ pub struct SnapshotHistoryEntry {
     pub created_at: u64,
     pub created_by: Address,
 }
+
+/// One asset pair's share of a wallet's cross-asset aggregate score, as
+/// returned by `get_aggregate_breakdown` (#1426).
+///
+/// `weight` is the effective (decay-adjusted) weight the aggregate used and
+/// `contribution` is the exact numerator term `weight × score`, so
+/// `Σ contribution / Σ weight` over every contributing pair is the aggregate.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AggregateContribution {
+    pub asset_pair: Symbol,
+    pub score: u32,
+    pub weight: u64,
+    pub contribution: u64,
+}
+
+/// Bounded "explain the aggregate" view returned by `get_aggregate_breakdown`
+/// (#1426). Produced by the same computation as `get_aggregate_score`.
+///
+/// - `weighted_sum` / `weight_sum` are the totals over **all** contributing
+///   pairs, so `weighted_sum / weight_sum == aggregate_score` holds even when
+///   the list is truncated.
+/// - `contributions` holds at most `MAX_AGGREGATE_BREAKDOWN_PAIRS` entries,
+///   ordered by `contribution` descending (ties keep the wallet's pair
+///   order). `truncated` is `true` when `pair_count` exceeds that cap.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AggregateBreakdown {
+    pub aggregate_score: u32,
+    pub pair_count: u32,
+    pub weighted_sum: u64,
+    pub weight_sum: u64,
+    pub truncated: bool,
+    pub contributions: Vec<AggregateContribution>,
+}
+
+/// The single per-wallet mechanism a cool-off exemption lifts (#1425).
+#[contracttype]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u32)]
+pub enum ExemptMechanism {
+    /// The per-`(wallet, asset_pair)` submission cooldown.
+    RateLimit = 1,
+    /// The score embargo, lifted only for reads by the record's
+    /// `disclose_to` party via `get_score_under_exemption`.
+    Embargo = 2,
+    /// The score-floor submission check.
+    ScoreFloor = 3,
+}
+
+/// A governed, two-person-authorised, mandatorily-expiring exemption of one
+/// wallet from exactly one mechanism (#1425). Stores only what the contract
+/// needs to enforce and audit it: the legal context lives off-chain and is
+/// bound here only by `governance_ref`, a 32-byte commitment to the
+/// authorising governance action. See docs/privacy-model.md.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CoolOffExemption {
+    pub mechanism: ExemptMechanism,
+    pub governance_ref: BytesN<32>,
+    pub approvers: Vec<Address>,
+    pub granted_at: u64,
+    pub expires_at: u64,
+    pub disclose_to: Option<Address>,
+}
+
+/// Storage keys for cool-off exemptions (#1425). A new enum, following the
+/// split-by-feature-era convention of `DataKeyB`..`DataKeyF`, so the change
+/// is purely additive to the storage layout.
+#[contracttype]
+#[derive(Clone)]
+pub enum DataKeyG {
+    /// Active (or lapsed, not yet removed) exemption for `(wallet, mechanism)`.
+    CoolOffExemption(Address, ExemptMechanism),
+}

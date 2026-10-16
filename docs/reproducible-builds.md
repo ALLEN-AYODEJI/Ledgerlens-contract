@@ -87,6 +87,10 @@ All inputs that affect WASM output determinism are locked:
 
 ## Post-processing with `wasm-opt` (evaluation)
 
+> **Spike status:** `still-open` · **Last reviewed:** 2026-10-16 · **Index:** [spike-index.md](spike-index.md#index)
+>
+> **Outcome:** only the methodology landed (issue #1194, closed); the evaluation report below was never filled in, so no `wasm-opt` configuration has been adopted or rejected on data. Best-available reason: the measurements need the benchmark suite and replay corpus run against each optimised artifact, which was not wired up when #1194 closed. Meanwhile the release pipeline already ships a `stellar contract optimize` artifact ([release-process.md](release-process.md)) whose equivalence this evaluation would establish. Tracked in: pending (see [open items](spike-index.md#open-items-awaiting-a-tracking-issue)).
+
 The workspace already builds with size-oriented flags (`opt-level = "z"`,
 LTO, `codegen-units = 1`).  A post-processing pass with Binaryen's `wasm-opt`
 can reduce size or CPU further, but because the artifact is security-critical
@@ -196,6 +200,12 @@ one (e.g. a modified commit, version, or stripped metadata section).
 ---
 
 ## Dependency license policy & SBOM
+
+> **Scope:** the controls below cover the Cargo workspace and the WASM. The
+> documentation site's toolchain is covered by the equivalent controls in
+> [security/docs-site-supply-chain.md](security/docs-site-supply-chain.md)
+> (SHA-pinned actions, pinned mdBook with a cargo-audit scan of its lockfile,
+> least-privilege publishing, and an integrity manifest for the published site).
 
 LedgerLens commits to more than reproducible builds: it enforces an explicit,
 machine-readable dependency license policy and ships a software bill of

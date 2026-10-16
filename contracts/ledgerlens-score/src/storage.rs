@@ -9,7 +9,7 @@ use crate::constants::{
 use crate::errors::Error;
 use crate::types::{
     AdaptiveRateLimit, AggregateRiskScore, AlertAckRecord, AlertType, DataKey, DataKeyB, DataKeyC,
-    DataKeyD, DataKeyF, DecayCurve, DeletionApprovalPolicy, EmbargoExpiry, FeeTier,
+    CoolOffExemption, DataKeyD, DataKeyF, DataKeyG, DecayCurve, ExemptMechanism, DeletionApprovalPolicy, EmbargoExpiry, FeeTier,
     FlashProtectionMode, GateDataKey, HllSketch, InterpolationMethod, JumpStats,
     ModelVersionStats, ModelVersionStatus, PairVolatilityState, ParamChangeProposal,
     ParameterProposalRecord, ParameterProposalStatus, PendingScoreEntry, Policy, PolicyApproval,
@@ -689,6 +689,21 @@ pub fn get_wallet_pairs(env: &Env, wallet: &Address) -> Vec<Symbol> {
         env.storage().persistent().extend_ttl(&key, SCORE_TTL_THRESHOLD, SCORE_TTL_EXTEND_TO);
     }
     pairs
+}
+
+/// Side-effect-free variant of [`get_wallet_pairs`]: does not extend the
+/// entry's TTL. Used by pure reads such as `get_aggregate_breakdown`.
+pub fn peek_wallet_pairs(env: &Env, wallet: &Address) -> Vec<Symbol> {
+    env.storage()
+        .persistent()
+        .get(&DataKey::AssetPairs(wallet.clone()))
+        .unwrap_or_else(|| Vec::new(env))
+}
+
+/// Side-effect-free variant of [`get_pair_weight`]: does not extend the
+/// entry's TTL.
+pub fn peek_pair_weight(env: &Env, asset_pair: &Symbol) -> u32 {
+    env.storage().persistent().get(&DataKey::PairWeight(asset_pair.clone())).unwrap_or(1)
 }
 
 pub fn get_pair_weight(env: &Env, asset_pair: &Symbol) -> u32 {
@@ -3913,4 +3928,40 @@ mod test_instrumentation {
     pub enum TestKey {
         ExtendCount,
     }
+}
+
+// ── Cool-off exemptions (#1425) ──────────────────────────────────────────────
+
+/// Returns the stored exemption record for `(wallet, mechanism)`, lapsed or
+/// not. Never extends TTL. Callers that enforce behaviour must use
+/// [`active_cool_off_exemption`] instead.
+pub fn get_cool_off_exemption(
+    env: &Env,
+    wallet: &Address,
+    mechanism: ExemptMechanism,
+) -> Option<CoolOffExemption> {
+    env.storage().persistent().get(&DataKeyG::CoolOffExemption(wallet.clone(), mechanism))
+}
+
+/// Returns the exemption for `(wallet, mechanism)` only while it is unexpired
+/// (`ledger_timestamp < expires_at`). A lapsed record is treated exactly as
+/// an absent one, so enforcement fails back to normal behaviour without any
+/// cleanup transaction.
+pub fn active_cool_off_exemption(
+    env: &Env,
+    wallet: &Address,
+    mechanism: ExemptMechanism,
+) -> Option<CoolOffExemption> {
+    get_cool_off_exemption(env, wallet, mechanism)
+        .filter(|e| env.ledger().timestamp() < e.expires_at)
+}
+
+pub fn set_cool_off_exemption(env: &Env, wallet: &Address, exemption: &CoolOffExemption) {
+    let key = DataKeyG::CoolOffExemption(wallet.clone(), exemption.mechanism);
+    env.storage().persistent().set(&key, exemption);
+    env.storage().persistent().extend_ttl(&key, SCORE_TTL_THRESHOLD, SCORE_TTL_EXTEND_TO);
+}
+
+pub fn remove_cool_off_exemption(env: &Env, wallet: &Address, mechanism: ExemptMechanism) {
+    env.storage().persistent().remove(&DataKeyG::CoolOffExemption(wallet.clone(), mechanism));
 }

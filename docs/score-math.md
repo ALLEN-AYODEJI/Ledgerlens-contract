@@ -110,6 +110,52 @@ def aggregate(pairs_and_scores, pair_weights, decay_factors=None):
 
 ---
 
+## Explaining the aggregate (`get_aggregate_breakdown`, #1426)
+
+`get_aggregate_breakdown(wallet)` is a decision-support read that shows which
+pairs produced `get_aggregate_score(wallet)`, without a consumer re-reading and
+recombining every pair score off-chain.
+
+```rust
+pub struct AggregateBreakdown {
+    pub aggregate_score: u32,   // identical to get_aggregate_score(..).aggregate_score
+    pub pair_count: u32,        // all contributing pairs, including omitted ones
+    pub weighted_sum: u64,      // Σ wᵢ·sᵢ over ALL pairs
+    pub weight_sum: u64,        // Σ wᵢ over ALL pairs
+    pub truncated: bool,        // pair_count > MAX_AGGREGATE_BREAKDOWN_PAIRS
+    pub contributions: Vec<AggregateContribution>, // { asset_pair, score, weight, contribution }
+}
+```
+
+`weight` is the effective weight the aggregate used: the configured pair weight
+after [decay](#exponential-decay). `contribution = weight × score` is the
+pair's exact term in the numerator, so
+
+$$\text{aggregate\_score} = \left\lfloor \frac{\text{weighted\_sum}}{\text{weight\_sum}} \right\rfloor
+= \left\lfloor \frac{\sum \text{contribution}_i}{\sum \text{weight}_i} \right\rfloor \quad\text{(when not truncated)}$$
+
+**One code path.** Both reads run the same private `aggregate_core` loop in
+`lib.rs`; the breakdown only asks it to also record each pair's term. The two
+cannot disagree, and a defect injected into that loop changes both results
+together. `test_aggregate_breakdown.rs` checks both against an independent
+reference model (`floor(Σw·s / Σw)`) over randomly generated portfolios
+(scores 0–100, weights 0–50 including zero-weight pairs), so such a defect
+fails the suite rather than being hidden by the two agreeing.
+
+**Truncation.** At most `MAX_AGGREGATE_BREAKDOWN_PAIRS` (10) entries are
+returned, ordered by `contribution` descending; ties keep the wallet's pair
+order. When a wallet has more contributing pairs, the omitted ones are always
+the smallest contributors, `truncated` is `true`, and `weighted_sum` /
+`weight_sum` still cover every pair, so the aggregate is reproducible from the
+totals. Zero-weight pairs are listed with `weight = 0`, `contribution = 0`.
+
+**Cost and side effects.** A pure read: unlike `get_aggregate_score`, it does
+not extend any entry's TTL. The submission path's aggregate-cache refresh calls
+the shared loop without breakdown collection, so it pays nothing for this
+feature. Embargo (`ScoreEmbargoed`), custodian delegation and the
+`ScoreNotFound` / `ArithmeticOverflow` errors behave exactly as for
+`get_aggregate_score`.
+
 ## Exponential Decay
 
 ### Formula

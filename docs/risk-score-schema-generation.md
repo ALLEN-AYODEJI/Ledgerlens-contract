@@ -1,5 +1,9 @@
 # RiskScore Cross-Repo Schema/Type Generation (Spike)
 
+> **Spike status:** `concluded-adopted` · **Last reviewed:** 2026-10-16 · **Index:** [spike-index.md](spike-index.md#index)
+>
+> **Outcome:** the recommendation (generate bindings from the Soroban contract-spec) was implemented as the `tools/schema-gen` crate, which CI builds and tests (`cross-platform.yml`, `sanitizers.yml`) and which sources the score domain from `ledgerlens_score::constants`. The "ready for an ADR / implementation follow-up" status line below is historical. Issue #932 is closed.
+
 Date: 2026-08-30
 Branch: `evaluate-riskscore-type-generation-932`
 Status: Spike complete — recommendation below is ready for an ADR / implementation follow-up.

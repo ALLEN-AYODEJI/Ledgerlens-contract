@@ -1,5 +1,9 @@
 # Cross-Shard Reconciliation Policy Spike
 
+> **Spike status:** `concluded-adopted` · **Last reviewed:** 2026-10-16 · **Index:** [../spike-index.md](../spike-index.md#index)
+>
+> **Outcome:** the current conservative fan-out policies and the primary-shard default for config getters were kept, and this decision is the one cited by [ADR: aggregator score responsibilities](../adr/aggregator-score-responsibilities.md). The config-getter change is a deliberate deferment with explicit preconditions (see § Recommendation), not open spike work.
+
 _Date: 2026-08-25_
 
 ## Decision

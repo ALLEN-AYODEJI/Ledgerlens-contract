@@ -1,5 +1,9 @@
 # Mutation Testing — Scope Expansion Benchmark
 
+> **Spike status:** `concluded-adopted` · **Last reviewed:** 2026-10-16 · **Index:** [spike-index.md](spike-index.md#index)
+>
+> **Outcome:** the rotating-shard schedule was adopted (`.cargo/mutants.toml`, `.github/workflows/mutation.yml`). The six test-improvement items in § 8 are ordinary test work, not open spike work; the kill-suite wiring gaps found later are tracked in [test-tiers.md](test-tiers.md). Issue #935 is closed.
+
 **Spike #935** · August 2026
 
 ---
